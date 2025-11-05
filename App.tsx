@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ActionButton } from './components/ActionButton';
 import { removeWatermark } from './services/geminiService';
-import { DownloadIcon, RefreshIcon, SpinnerIcon } from './components/Icons';
+import { DownloadIcon, RefreshIcon, SpinnerIcon, WandIcon, SparklesIcon } from './components/Icons';
 
 type ImageJobStatus = 'queued' | 'processing' | 'success' | 'error';
 
@@ -19,32 +19,27 @@ interface ImageJob {
 
 const App: React.FC = () => {
   const [imageJobs, setImageJobs] = useState<ImageJob[]>([]);
-  const [isProcessingBatch, setIsProcessingBatch] = useState<boolean>(false);
 
-  useEffect(() => {
-    const processQueue = async () => {
-      const jobToProcess = imageJobs.find(job => job.status === 'queued');
-      if (!jobToProcess) {
-        setIsProcessingBatch(false);
-        return;
-      }
+  const processImage = async (jobId: string) => {
+    const jobToProcess = imageJobs.find(job => job.id === jobId);
+    if (!jobToProcess) return;
 
-      setIsProcessingBatch(true);
-      setImageJobs(prev => prev.map(j => j.id === jobToProcess.id ? { ...j, status: 'processing' } : j));
+    // Use the last processed image for refinement, or the original for the first pass.
+    const sourceImage = jobToProcess.processedSrc || jobToProcess.originalSrc;
+    
+    setImageJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'processing', error: undefined } : j));
 
-      try {
-        const base64Data = jobToProcess.originalSrc.split(',')[1];
-        const resultBase64 = await removeWatermark(base64Data, jobToProcess.file.type);
-        const processedSrc = `data:${jobToProcess.file.type};base64,${resultBase64}`;
-        setImageJobs(prev => prev.map(j => j.id === jobToProcess.id ? { ...j, status: 'success', processedSrc } : j));
-      } catch (err) {
-        console.error(err);
-        setImageJobs(prev => prev.map(j => j.id === jobToProcess.id ? { ...j, status: 'error', error: 'Falha ao processar imagem.' } : j));
-      }
-    };
+    try {
+      const base64Data = sourceImage.split(',')[1];
+      const resultBase64 = await removeWatermark(base64Data, jobToProcess.file.type);
+      const newProcessedSrc = `data:${jobToProcess.file.type};base64,${resultBase64}`;
+      setImageJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'success', processedSrc: newProcessedSrc } : j));
+    } catch (err) {
+      console.error(err);
+      setImageJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'error', error: 'Falha ao processar imagem.' } : j));
+    }
+  };
 
-    processQueue();
-  }, [imageJobs]);
 
   const handleImageUpload = (files: File[]) => {
     const fileReadPromises = files.map(file => {
@@ -69,9 +64,8 @@ const App: React.FC = () => {
           const newJobs: ImageJob[] = [];
   
           loadedFiles.forEach((loadedFile, index) => {
-            // Verifica se a imagem já existe (na sessão atual ou no novo lote)
             if (!existingSrcs.has(loadedFile.originalSrc)) {
-              existingSrcs.add(loadedFile.originalSrc); // Adiciona ao set para evitar duplicatas dentro do mesmo lote
+              existingSrcs.add(loadedFile.originalSrc);
               newJobs.push({
                 id: `${loadedFile.file.name}-${Date.now()}-${index}`,
                 file: loadedFile.file,
@@ -87,17 +81,9 @@ const App: React.FC = () => {
       })
       .catch(error => {
         console.error("Ocorreu um erro ao carregar as imagens:", error);
-        // Opcional: Adicionar um feedback de erro para o usuário
       });
   };
   
-
-  const handleRetry = (jobId: string) => {
-    setImageJobs(prev => prev.map(j =>
-      j.id === jobId ? { ...j, status: 'queued', processedSrc: null, error: undefined } : j
-    ));
-  };
-
   const handleDownload = (job: ImageJob) => {
     if (!job.processedSrc) return;
     const link = document.createElement('a');
@@ -110,7 +96,6 @@ const App: React.FC = () => {
 
   const resetState = () => {
     setImageJobs([]);
-    setIsProcessingBatch(false);
   };
 
   return (
@@ -123,25 +108,37 @@ const App: React.FC = () => {
           <div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {imageJobs.map(job => (
-                <div key={job.id} className="bg-base-200 p-4 rounded-2xl shadow-lg border border-base-300">
+                <div key={job.id} className="bg-base-200 p-4 rounded-2xl shadow-lg border border-base-300 flex flex-col">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                     <ImageDisplay title="Original" imageSrc={job.originalSrc} />
-                    <ImageDisplay title="Sem Marca D'água" imageSrc={job.processedSrc} isLoading={job.status === 'processing'} />
+                    <ImageDisplay title="Resultado" imageSrc={job.processedSrc} isLoading={job.status === 'processing'} />
                   </div>
                   {job.status === 'error' && (
                      <div className="bg-red-500/20 text-red-300 px-3 py-2 rounded-lg mt-4 text-center text-sm" role="alert">
                        {job.error}
                      </div>
                   )}
-                  <div className="mt-4 flex flex-wrap justify-center items-center gap-3">
-                    {job.status === 'success' && (
-                      <ActionButton onClick={() => handleDownload(job)}>
-                        <DownloadIcon />
-                        Baixar
-                      </ActionButton>
+                  <div className="mt-4 flex-grow flex flex-wrap justify-center items-center gap-3">
+                    {job.status === 'queued' && (
+                       <ActionButton onClick={() => processImage(job.id)}>
+                         <WandIcon />
+                         Remover Marca D'água
+                       </ActionButton>
                     )}
-                     {(job.status === 'success' || job.status === 'error') && (
-                      <button onClick={() => handleRetry(job.id)} className="inline-flex items-center justify-center gap-2 px-6 py-3 font-semibold text-gray-300 bg-base-300 rounded-full hover:bg-gray-600 transition-colors">
+                    {job.status === 'success' && (
+                      <>
+                        <ActionButton onClick={() => handleDownload(job)}>
+                          <DownloadIcon />
+                          Baixar
+                        </ActionButton>
+                        <button onClick={() => processImage(job.id)} className="inline-flex items-center justify-center gap-2 px-6 py-3 font-semibold text-gray-300 bg-base-300 rounded-full hover:bg-gray-600 transition-colors">
+                          <SparklesIcon />
+                          Aprimorar Resultado
+                        </button>
+                      </>
+                    )}
+                     {job.status === 'error' && (
+                      <button onClick={() => processImage(job.id)} className="inline-flex items-center justify-center gap-2 px-6 py-3 font-semibold text-gray-300 bg-base-300 rounded-full hover:bg-gray-600 transition-colors">
                         <RefreshIcon />
                         Tentar Novamente
                       </button>

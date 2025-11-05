@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface ImageDisplayProps {
@@ -22,7 +21,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({ title, imageSrc, isL
           />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-gray-500">A imagem processada aparecerá aqui</p>
+            <p className="text-gray-500">O resultado aparecerá aqui</p>
           </div>
         )}
       </div>
