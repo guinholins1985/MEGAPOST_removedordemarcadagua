@@ -4,7 +4,7 @@ import { ImageUploader } from './components/ImageUploader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ActionButton } from './components/ActionButton';
 import { removeWatermark } from './services/geminiService';
-import { DownloadIcon, RefreshIcon, SpinnerIcon, WandIcon, SparklesIcon } from './components/Icons';
+import { DownloadIcon, RefreshIcon, SpinnerIcon, SparklesIcon } from './components/Icons';
 
 type ImageJobStatus = 'queued' | 'processing' | 'success' | 'error';
 
@@ -121,7 +121,6 @@ const App: React.FC = () => {
                   <div className="mt-4 flex-grow flex flex-wrap justify-center items-center gap-3">
                     {job.status === 'queued' && (
                        <ActionButton onClick={() => processImage(job.id)}>
-                         <WandIcon />
                          Remover Marca D'água
                        </ActionButton>
                     )}
